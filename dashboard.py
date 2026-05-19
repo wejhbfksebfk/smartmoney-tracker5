@@ -15,7 +15,7 @@
 """
 
 import time, math, io, json, collections
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 import requests
 import pandas as pd
@@ -37,94 +37,339 @@ st.set_page_config(
 # ════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-:root{--bg:#080c14;--bg2:#0d1220;--bg3:#111a2c;--bd:#1a2d45;
-      --tx:#c8d8ee;--mt:#4a6080;--bl:#3b82f6;--gn:#10b981;
-      --rd:#ef4444;--or:#f59e0b;--pu:#8b5cf6;--cy:#06b6d4;}
+/* ── 토큰 ───────────────────────────────────────────── */
+:root {
+  --bg:    #06080f;
+  --bg2:   #0a0d18;
+  --bg3:   #0e1220;
+  --bg4:   #131929;
+  --bd:    #1c2a3f;
+  --bd2:   #243352;
+  --tx:    #cdd8f0;
+  --tx2:   #8499b8;
+  --tx3:   #4a607a;
+  --bl:    #4f8ef7;
+  --bl2:   #2563eb;
+  --gn:    #22c55e;
+  --gn2:   #16a34a;
+  --rd:    #f43f5e;
+  --rd2:   #be123c;
+  --or:    #f97316;
+  --or2:   #ea580c;
+  --pu:    #a855f7;
+  --pu2:   #7c3aed;
+  --cy:    #22d3ee;
+  --gold:  #fbbf24;
+  --glow-b: 0 0 20px rgba(79,142,247,.18);
+  --glow-g: 0 0 20px rgba(34,197,94,.18);
+  --glow-r: 0 0 20px rgba(244,63,94,.18);
+}
 
-html,body,.stApp{background:var(--bg)!important;color:var(--tx);font-family:'Noto Sans KR',sans-serif;}
-.block-container{padding:1.1rem 1.6rem 2rem;max-width:100%!important;}
+/* ── 기본 레이아웃 ──────────────────────────────────── */
+html, body, .stApp { background:var(--bg) !important; color:var(--tx); font-family:'Noto Sans KR',sans-serif; }
+.block-container    { padding:1rem 1.8rem 3rem; max-width:100% !important; }
+*                   { box-sizing:border-box; }
 
-[data-testid="stSidebar"]{background:var(--bg2)!important;border-right:1px solid var(--bd);}
-[data-testid="stSidebar"] *{color:var(--tx)!important;}
+/* ── 스크롤바 ───────────────────────────────────────── */
+::-webkit-scrollbar             { width:5px; height:5px; }
+::-webkit-scrollbar-track       { background:var(--bg2); }
+::-webkit-scrollbar-thumb       { background:var(--bd2); border-radius:99px; }
+::-webkit-scrollbar-thumb:hover { background:#2d4060; }
 
-.stTextInput input{background:var(--bg3)!important;border:1px solid var(--bd)!important;
-                   color:var(--tx)!important;border-radius:7px!important;font-size:.86rem!important;}
-.stTextInput input:focus{border-color:var(--bl)!important;box-shadow:0 0 0 2px rgba(59,130,246,.2)!important;}
-.stNumberInput input{background:var(--bg3)!important;border:1px solid var(--bd)!important;color:var(--tx)!important;border-radius:7px!important;}
-.stSelectbox>div>div{background:var(--bg3)!important;border:1px solid var(--bd)!important;border-radius:7px!important;}
+/* ── 사이드바 ───────────────────────────────────────── */
+[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #080c18 0%, #060810 100%) !important;
+  border-right: 1px solid var(--bd);
+}
+[data-testid="stSidebar"] * { color:var(--tx) !important; }
+[data-testid="stSidebarContent"] { padding:.8rem .9rem; }
 
-.stButton>button{background:linear-gradient(135deg,#1d4ed8,#0891b2);color:#fff;border:none;
-                 border-radius:8px;font-weight:700;font-size:.9rem;padding:.55rem 1rem;
-                 width:100%;transition:opacity .15s,transform .1s;letter-spacing:.03em;}
-.stButton>button:hover{opacity:.82;transform:translateY(-1px);}
+/* ── 인풋 ───────────────────────────────────────────── */
+.stTextInput input, .stNumberInput input {
+  background: var(--bg3) !important;
+  border: 1px solid var(--bd) !important;
+  color: var(--tx) !important;
+  border-radius: 8px !important;
+  font-size: .85rem !important;
+  transition: border-color .2s, box-shadow .2s;
+}
+.stTextInput input:focus, .stNumberInput input:focus {
+  border-color: var(--bl) !important;
+  box-shadow: 0 0 0 3px rgba(79,142,247,.15) !important;
+  background: var(--bg4) !important;
+}
+.stSelectbox > div > div {
+  background: var(--bg3) !important;
+  border: 1px solid var(--bd) !important;
+  border-radius: 8px !important;
+  color: var(--tx) !important;
+}
 
-[data-testid="metric-container"]{background:var(--bg3);border:1px solid var(--bd);border-radius:10px;padding:.8rem 1rem;}
-[data-testid="metric-container"] label{color:var(--mt)!important;font-size:.68rem!important;text-transform:uppercase;letter-spacing:.08em;}
-[data-testid="stMetricValue"]{color:#f0f6ff!important;font-family:'JetBrains Mono',monospace!important;font-size:1.4rem!important;font-weight:700!important;}
+/* ── 버튼 ───────────────────────────────────────────── */
+.stButton > button {
+  background: linear-gradient(135deg, var(--bl2) 0%, #0891b2 100%);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: .88rem;
+  padding: .6rem 1.2rem;
+  width: 100%;
+  transition: all .18s;
+  letter-spacing: .04em;
+  box-shadow: 0 4px 15px rgba(37,99,235,.3);
+}
+.stButton > button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(37,99,235,.45);
+  filter: brightness(1.1);
+}
+.stButton > button:active { transform: translateY(0); }
 
-[data-testid="stTabs"] button[role="tab"]{background:var(--bg3);border:1px solid var(--bd);
-  border-bottom:none;border-radius:8px 8px 0 0;color:var(--mt);font-weight:600;font-size:.83rem;}
-[data-testid="stTabs"] button[aria-selected="true"]{background:var(--bg2)!important;
-  color:var(--bl)!important;border-color:var(--bl)!important;border-bottom:2px solid var(--bl)!important;}
+/* ── 다운로드 버튼 ──────────────────────────────────── */
+.stDownloadButton > button {
+  background: transparent !important;
+  color: var(--bl) !important;
+  border: 1px solid var(--bd2) !important;
+  border-radius: 8px !important;
+  font-size: .8rem !important;
+  font-weight: 600 !important;
+  transition: all .15s !important;
+}
+.stDownloadButton > button:hover {
+  background: rgba(79,142,247,.1) !important;
+  border-color: var(--bl) !important;
+}
 
-.stDownloadButton>button{background:var(--bg3);color:var(--bl);border:1px solid var(--bd);
-  border-radius:7px;font-size:.8rem;font-weight:600;padding:.38rem .85rem;}
-.stDownloadButton>button:hover{background:var(--bd);}
+/* ── 토글 ───────────────────────────────────────────── */
+[data-testid="stToggle"] > label > div[data-checked="true"] { background: var(--bl) !important; }
 
-[data-testid="stExpander"]{background:var(--bg3);border:1px solid var(--bd);border-radius:8px;}
-.streamlit-expanderHeader{font-size:.84rem!important;}
+/* ── 메트릭 카드 ────────────────────────────────────── */
+[data-testid="metric-container"] {
+  background: linear-gradient(135deg, var(--bg3) 0%, var(--bg4) 100%);
+  border: 1px solid var(--bd);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  position: relative;
+  overflow: hidden;
+  transition: transform .15s, box-shadow .15s;
+}
+[data-testid="metric-container"]:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--glow-b);
+}
+[data-testid="metric-container"]::before {
+  content:'';
+  position:absolute;
+  top:0;left:0;right:0;height:2px;
+  background: linear-gradient(90deg, var(--bl), transparent);
+}
+[data-testid="metric-container"] label {
+  color: var(--tx3) !important;
+  font-size: .65rem !important;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  font-weight: 600;
+}
+[data-testid="stMetricValue"] {
+  color: #f0f6ff !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 1.35rem !important;
+  font-weight: 700 !important;
+  line-height: 1.3 !important;
+}
+[data-testid="stMetricDelta"] { font-size: .72rem !important; }
+
+/* ── 탭 ─────────────────────────────────────────────── */
+[data-testid="stTabs"] [role="tablist"] {
+  border-bottom: 1px solid var(--bd);
+  gap: .25rem;
+  padding-bottom: 0;
+}
+[data-testid="stTabs"] button[role="tab"] {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--tx3);
+  font-weight: 600;
+  font-size: .83rem;
+  padding: .55rem 1rem;
+  margin-bottom: -1px;
+  transition: color .15s, border-color .15s;
+}
+[data-testid="stTabs"] button[role="tab"]:hover { color: var(--tx2); }
+[data-testid="stTabs"] button[aria-selected="true"] {
+  color: var(--bl) !important;
+  border-bottom-color: var(--bl) !important;
+  background: transparent !important;
+}
+
+/* ── Expander ───────────────────────────────────────── */
+[data-testid="stExpander"] {
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.streamlit-expanderHeader { font-size: .84rem !important; color: var(--tx2) !important; }
+
+/* ── 데이터프레임 ───────────────────────────────────── */
+[data-testid="stDataFrame"] { border-radius: 10px; overflow: hidden; }
+iframe { border-radius: 10px !important; }
+
+/* ══════════════════════════════════════════════════════
+   커스텀 컴포넌트
+═══════════════════════════════════════════════════════ */
 
 /* 섹션 헤더 */
-.sh{font-size:.93rem;font-weight:700;color:#e2e8f0;
-    background:linear-gradient(90deg,#1a2d4a,transparent);
-    border-left:3px solid var(--bl);padding:.4rem .85rem;
-    border-radius:0 6px 6px 0;margin:.9rem 0 .45rem;letter-spacing:.03em;}
-.sh-sell{border-left-color:var(--pu)!important;}
-.sh-track{border-left-color:var(--gn)!important;}
+.sh {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .88rem;
+  font-weight: 700;
+  color: #dae4f8;
+  padding: .45rem .9rem .45rem .75rem;
+  margin: 1.1rem 0 .5rem;
+  border-left: 3px solid var(--bl);
+  background: linear-gradient(90deg, rgba(79,142,247,.08) 0%, transparent 70%);
+  border-radius: 0 8px 8px 0;
+  letter-spacing: .02em;
+}
+.sh-sell  { border-left-color: var(--pu) !important; background: linear-gradient(90deg, rgba(168,85,247,.08) 0%, transparent 70%) !important; }
+.sh-track { border-left-color: var(--gn) !important; background: linear-gradient(90deg, rgba(34,197,94,.08) 0%, transparent 70%) !important; }
 
 /* 시그널 뱃지 */
-.sig{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.72rem;font-weight:700;margin:1px;}
-.sig-on {background:#1a3a1a;color:#4ade80;border:1px solid var(--gn);}
-.sig-off{background:#1a1a2a;color:#475569;border:1px solid #2a3040;}
-.sig-warn{background:#2a1a0a;color:#fb923c;border:1px solid var(--or);}
+.sig { display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:5px; font-size:.68rem; font-weight:700; margin:1.5px; letter-spacing:.02em; }
+.sig-on   { background:rgba(34,197,94,.12);  color:#4ade80; border:1px solid rgba(34,197,94,.3); }
+.sig-off  { background:rgba(255,255,255,.03); color:#3a4d60; border:1px solid rgba(255,255,255,.05); }
+.sig-warn { background:rgba(249,115,22,.12); color:#fb923c; border:1px solid rgba(249,115,22,.3); }
 
-/* 종목 카드 */
-.sg{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.65rem;margin-top:.4rem;}
-.sc{background:var(--bg3);border:1px solid var(--bd);border-radius:10px;
-    padding:.8rem .95rem;transition:border-color .15s,transform .1s;}
-.sc:hover{border-color:var(--bl);transform:translateY(-2px);}
-.sc-S{border-left:3px solid var(--rd);}
-.sc-A{border-left:3px solid var(--or);}
-.sc-B{border-left:3px solid var(--bl);}
-.sc-sell{border-left:3px solid var(--pu);}
-.sc-name{font-size:.88rem;font-weight:700;color:#e2e8f0;}
-.sc-code{font-size:.7rem;color:var(--mt);font-family:'JetBrains Mono',monospace;}
-.sc-price{font-family:'JetBrains Mono',monospace;font-size:1.02rem;font-weight:600;
-          color:#f0f6ff;margin:.3rem 0 .15rem;}
-.sc-bar-wrap{background:#1a2540;border-radius:99px;height:5px;margin:.35rem 0 .3rem;}
-.sc-bar-buy {background:linear-gradient(90deg,#ef4444,#f59e0b);height:5px;border-radius:99px;}
-.sc-bar-sell{background:linear-gradient(90deg,#8b5cf6,#3b82f6);height:5px;border-radius:99px;}
-.sc-sigs{font-size:.7rem;line-height:1.9;margin-top:.3rem;}
-.sc-tp{font-size:.72rem;color:#4ade80;margin-top:.25rem;}
-.sc-sl{font-size:.72rem;color:#f87171;}
+/* ── 종목 카드 그리드 ────────────────────────────────── */
+.sg {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: .7rem;
+  margin-top: .5rem;
+}
+.sc {
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  border-radius: 14px;
+  padding: 1rem 1.05rem;
+  cursor: default;
+  transition: transform .18s, box-shadow .18s, border-color .18s;
+  position: relative;
+  overflow: hidden;
+}
+.sc::after {
+  content:'';
+  position:absolute;
+  inset:0;
+  background: linear-gradient(135deg, rgba(255,255,255,.025) 0%, transparent 50%);
+  pointer-events:none;
+}
+.sc:hover {
+  transform: translateY(-3px);
+  border-color: var(--bd2);
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+}
+.sc-S {
+  border-top: 2px solid var(--rd);
+  box-shadow: 0 0 0 0 var(--rd);
+}
+.sc-S:hover { box-shadow: 0 8px 24px rgba(244,63,94,.15); border-color: rgba(244,63,94,.4); }
+.sc-A {
+  border-top: 2px solid var(--or);
+}
+.sc-A:hover { box-shadow: 0 8px 24px rgba(249,115,22,.15); border-color: rgba(249,115,22,.35); }
+.sc-B {
+  border-top: 2px solid var(--bl);
+}
+.sc-B:hover { box-shadow: 0 8px 24px rgba(79,142,247,.15); border-color: rgba(79,142,247,.35); }
+.sc-sell {
+  border-top: 2px solid var(--pu);
+}
+.sc-sell:hover { box-shadow: 0 8px 24px rgba(168,85,247,.15); border-color: rgba(168,85,247,.35); }
 
-/* 추적 수첩 */
-.track-card{background:var(--bg3);border:1px solid var(--bd);border-radius:8px;padding:.7rem .9rem;margin:.3rem 0;}
-.track-win {border-left:3px solid var(--gn);}
-.track-loss{border-left:3px solid var(--rd);}
-.track-open{border-left:3px solid var(--or);}
+.sc-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:.4rem; }
+.sc-name   { font-size:.9rem; font-weight:700; color:#e8eefa; line-height:1.3; }
+.sc-code   { font-size:.68rem; color:var(--tx3); font-family:'JetBrains Mono',monospace; margin-top:2px; }
+.sc-badge  { font-size:.68rem; font-weight:800; padding:3px 9px; border-radius:6px; white-space:nowrap; letter-spacing:.04em; }
+.sc-badge-S  { background:rgba(244,63,94,.15); color:#fb7185; border:1px solid rgba(244,63,94,.3); }
+.sc-badge-A  { background:rgba(249,115,22,.15); color:#fb923c; border:1px solid rgba(249,115,22,.3); }
+.sc-badge-B  { background:rgba(79,142,247,.15); color:#7dd3fc; border:1px solid rgba(79,142,247,.3); }
+.sc-badge-sell { background:rgba(168,85,247,.15); color:#c084fc; border:1px solid rgba(168,85,247,.3); }
+.sc-price-row { display:flex; align-items:baseline; gap:.45rem; margin:.35rem 0 .1rem; }
+.sc-price  { font-family:'JetBrains Mono',monospace; font-size:1.08rem; font-weight:600; color:#f0f6ff; }
+.sc-score  { font-family:'JetBrains Mono',monospace; font-size:.78rem; font-weight:700; margin-left:auto; }
+.sc-bar-wrap { background:rgba(255,255,255,.05); border-radius:99px; height:3px; margin:.4rem 0 .35rem; }
+.sc-bar-buy  { background:linear-gradient(90deg,#f43f5e,#f97316,#fbbf24); height:3px; border-radius:99px; }
+.sc-bar-sell { background:linear-gradient(90deg,#a855f7,#6366f1,#3b82f6); height:3px; border-radius:99px; }
+.sc-sigs   { margin-top:.3rem; line-height:2; }
+.sc-tpsl   { display:grid; grid-template-columns:1fr 1fr; gap:.3rem; margin-top:.45rem; }
+.sc-tp-box { background:rgba(34,197,94,.07);  border:1px solid rgba(34,197,94,.2);  border-radius:7px; padding:.28rem .5rem; }
+.sc-sl-box { background:rgba(244,63,94,.07);  border:1px solid rgba(244,63,94,.2);  border-radius:7px; padding:.28rem .5rem; }
+.sc-tp-lbl { font-size:.62rem; color:rgba(34,197,94,.6); font-weight:700; letter-spacing:.05em; margin-bottom:1px; }
+.sc-sl-lbl { font-size:.62rem; color:rgba(244,63,94,.6);  font-weight:700; letter-spacing:.05em; margin-bottom:1px; }
+.sc-tp-val { font-family:'JetBrains Mono',monospace; font-size:.76rem; color:#4ade80; font-weight:600; }
+.sc-sl-val { font-family:'JetBrains Mono',monospace; font-size:.76rem; color:#f87171; font-weight:600; }
+.sc-reason { font-size:.68rem; color:var(--tx3); margin-top:.4rem; line-height:1.75; border-top:1px solid rgba(255,255,255,.04); padding-top:.35rem; }
 
-.up  {color:#f87171;font-weight:700;}
-.dn  {color:#34d399;font-weight:700;}
-.flat{color:#94a3b8;}
+/* ── 추적 수첩 카드 ─────────────────────────────────── */
+.track-card {
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: .85rem 1rem;
+  margin: .4rem 0;
+  transition: transform .15s;
+}
+.track-card:hover { transform: translateX(3px); }
+.track-win  { border-left: 3px solid var(--gn); }
+.track-loss { border-left: 3px solid var(--rd); }
+.track-open { border-left: 3px solid var(--or); }
+.track-grid {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: .4rem;
+  margin-top: .5rem;
+}
+.track-cell {
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 8px;
+  padding: .35rem .4rem;
+  text-align: center;
+}
+.track-cell-lbl { font-size:.62rem; color:var(--tx3); margin-bottom:2px; }
+.track-cell-val { font-size:.78rem; font-weight:700; }
+.track-cell-price { font-size:.62rem; color:var(--tx3); font-family:'JetBrains Mono',monospace; }
 
-/* 시간대 배너 */
-.time-banner{border-radius:8px;padding:.5rem 1rem;font-size:.82rem;font-weight:600;margin-bottom:.7rem;text-align:center;}
-.time-prime {background:#0f2a0f;border:1px solid var(--gn);color:#4ade80;}
-.time-caution{background:#2a1a0a;border:1px solid var(--or);color:#fb923c;}
-.time-closed{background:#1a1a2a;border:1px solid #2a3040;color:var(--mt);}
+/* ── 헬퍼 클래스 ────────────────────────────────────── */
+.up   { color:#fb7185; font-weight:700; }
+.dn   { color:#4ade80; font-weight:700; }
+.flat { color:#64748b; }
+.mono { font-family:'JetBrains Mono',monospace; }
+
+/* ── 시간대 배너 ────────────────────────────────────── */
+.time-banner { border-radius:9px; padding:.48rem 1rem; font-size:.79rem; font-weight:700; margin-bottom:.6rem; text-align:center; letter-spacing:.02em; }
+.time-prime   { background:rgba(34,197,94,.1);  border:1px solid rgba(34,197,94,.3);  color:#4ade80; }
+.time-caution { background:rgba(249,115,22,.1); border:1px solid rgba(249,115,22,.3); color:#fb923c; }
+.time-closed  { background:rgba(255,255,255,.03); border:1px solid var(--bd); color:var(--tx3); }
+.time-normal  { background:rgba(79,142,247,.08); border:1px solid rgba(79,142,247,.25); color:#7dd3fc; }
+
+/* ── 구분선 ─────────────────────────────────────────── */
+hr { border:none; border-top:1px solid var(--bd) !important; margin:.9rem 0 !important; }
+
+/* ── 알림 박스 ──────────────────────────────────────── */
+.stAlert { border-radius:10px !important; }
+
+/* ── 프로그레스바 ───────────────────────────────────── */
+[data-testid="stProgress"] > div > div { background: linear-gradient(90deg, var(--bl2), var(--cy)) !important; border-radius:99px !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -150,7 +395,9 @@ _DEF = {
     "token":None,"token_ts":0,
     "buy_ranks":[],"sell_ranks":[],"vol_list":[],
     "ntby_hist":{},"supply_ts":{},
-    "tracker":[],   # 추적 수첩
+    "tracker":[],        # 추적 수첩
+    "closed_data":{},    # 장외 시간 전일 마감 데이터 캐시
+    "last_data_date":"", # 마지막으로 데이터를 받은 날짜
     "last_run":None,"run_count":0,
     "cfg":{
         "surge":1.5,"dual_bonus":2.0,"max_prdy":3.0,
@@ -317,7 +564,83 @@ def fetch_minute(iscd, n=10):
         return d["output2"][:n]
     return []
 
-# ── 5-6. 투자자별 일별 매매 동향 (연속 순매수일 체크) ──────
+# ── 5-6. 일별 과거 시세 (FHKST03010100) ────────────────────
+def fetch_daily_price(iscd, n=100):
+    """
+    종목 일별 시세 — 과거 n거래일치
+    추적 수첩 경과 수익률 자동 계산 + 장외시간 전일 마감 데이터에 사용
+    """
+    url=f"{burl()}/uapi/domestic-stock/v1/quotations/inquire-daily-price"
+    d=ag(url,"FHKST03010100",{
+        "fid_cond_mrkt_div_code":"J",
+        "fid_input_iscd":iscd,
+        "fid_period_div_code":"D",
+        "fid_org_adj_prc":"0"})
+    if d and d.get("output"):
+        return d["output"][:n]
+    return []
+
+def fetch_daily_price_range(iscd, date_from, date_to):
+    """
+    특정 기간 일별 시세 (date_from~date_to, YYYYMMDD 형식)
+    포착 이후 N일 뒤 종가 조회용
+    """
+    url=f"{burl()}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
+    d=ag(url,"FHKST03010200",{
+        "fid_cond_mrkt_div_code":"J",
+        "fid_input_iscd":iscd,
+        "fid_input_date_1":date_from,
+        "fid_input_date_2":date_to,
+        "fid_period_div_code":"D",
+        "fid_org_adj_prc":"0"})
+    if d and d.get("output2"):
+        return d["output2"]
+    # fallback: output
+    if d and d.get("output"):
+        return d["output"]
+    return []
+
+def get_price_on_date(iscd, target_date_str):
+    """
+    target_date_str(YYYYMMDD) 당일 또는 가장 가까운 다음 거래일 종가 반환
+    없으면 None
+    """
+    # target 날짜 기준 ±7일 범위 조회
+    from datetime import datetime as dt
+    td = dt.strptime(target_date_str, "%Y%m%d")
+    date_from = (td - timedelta(days=3)).strftime("%Y%m%d")
+    date_to   = (td + timedelta(days=7)).strftime("%Y%m%d")
+    rows = fetch_daily_price_range(iscd, date_from, date_to)
+    if not rows:
+        return None
+    # 날짜 오름차순 정렬 후 target 이후 첫 번째 거래일 종가
+    dated = []
+    for r in rows:
+        ds = r.get("stck_bsop_date", r.get("bass_dt",""))
+        price = iv(r.get("stck_clpr", r.get("stck_prpr",0)))
+        if ds and price > 0:
+            dated.append((ds, price))
+    dated.sort(key=lambda x: x[0])
+    for ds, price in dated:
+        if ds >= target_date_str:
+            return price
+    return None
+
+def nth_business_day(from_date_str, n):
+    """
+    from_date_str(YYYYMMDD)로부터 n 영업일 후 날짜 (YYYYMMDD) 반환
+    단순히 달력 기준 n*1.4일 후로 근사 (한국 공휴일 미반영)
+    """
+    from datetime import datetime as dt
+    d = dt.strptime(from_date_str, "%Y%m%d")
+    added = 0
+    while added < n:
+        d += timedelta(days=1)
+        if d.weekday() < 5:   # 월~금
+            added += 1
+    return d.strftime("%Y%m%d")
+
+# ── 5-7. 투자자별 일별 매매 동향 (연속 순매수일 체크) ──────
 def fetch_investor_daily(iscd):
     """
     FHKST01010900 : 투자자별 일별 매매 동향
@@ -708,39 +1031,131 @@ def run_pipeline(cfg, log_fn):
         "거래량비율":fv(r.get("vol_inrt",0)),
     } for r in vol if r.get("mksc_shrn_iscd","").strip()]
 
+    # ── 장외 시간: 전일 마감 데이터 fallback ──────────────────
+    # 실시간 데이터가 없어 결과가 비었을 때 → 전일 마감 기준으로 재수집
+    if not buy_ranks and session in ("closed", "caution"):
+        log_fn("📅 장외 시간 — 전일 마감 데이터로 재조회 중...")
+        st.session_state.last_data_date = "전일 마감 기준"
+        # 전일 마감 기준: max_prdy 완화, 시간대 필터 OFF, 점수 기준 완화
+        cfg_eod = {**cfg, "max_prdy": 10.0, "time_filter": False,
+                   "threshold": 2.0, "min_vol": 1.0, "min_amt": 100}
+        buy_ranks2 = []
+        for idx, row in enumerate(buy_cands, 1):
+            cd = row["코드"]
+            log_fn(f"   전일 [{idx}/{len(buy_cands)}] {row['종목명']}")
+            det   = fetch_detail(cd); time.sleep(0.04)
+            daily = fetch_investor_daily(cd); time.sleep(0.06)
+            sc, grade, ok, sigs, msgs = calc_buy_score(
+                cd, row["순매수량"], row["거래대금(백만)"],
+                row["등락률"], det,
+                cd in org_set, cd in prg_set, cd in vol_set,
+                daily, [], cfg_eod, "normal")
+            if not ok: continue
+            tp, sl, tp_pct, sl_pct = calc_tp_sl(row["현재가"], grade, cfg_eod)
+            buy_ranks2.append({**row,
+                "기관동반": "O" if cd in org_set else "-",
+                "프로그램": "🔥" if cd in prg_set else "-",
+                "거래량급증": "💥" if cd in vol_set else "-",
+                "추천등급": grade, "매수점수": sc,
+                "목표가": tp, "목표수익률": f"+{tp_pct:.1f}%",
+                "손절가": sl, "손절률": f"-{sl_pct:.1f}%",
+                "시그널": sigs, "사유": "📅 전일 마감 기준\n" + "\n".join(msgs),
+            })
+        buy_ranks2.sort(key=lambda x: x["매수점수"], reverse=True)
+        buy_ranks = buy_ranks2
+
+        sell_ranks2 = []
+        for row in sell_cands:
+            cd = row["코드"]
+            det   = fetch_detail(cd); time.sleep(0.04)
+            daily = fetch_investor_daily(cd); time.sleep(0.06)
+            sc, sigs, msgs = calc_sell_score(cd, row["순매수량"], row["등락률"], det, daily, [])
+            if sc < 10: continue
+            sell_ranks2.append({**row, "매도경보점수": sc, "시그널": sigs,
+                                 "사유": "📅 전일 마감 기준\n" + "\n".join(msgs)})
+        sell_ranks2.sort(key=lambda x: x["매도경보점수"], reverse=True)
+        sell_ranks = sell_ranks2
+    else:
+        st.session_state.last_data_date = "실시간"
+
     log_fn(f"✅ 완료! 매수추천 {len(buy_ranks)}개 · 매도경보 {len(sell_ranks)}개")
     return buy_ranks, sell_ranks, vol_list
 
 
 # ════════════════════════════════════════════════════════════
-#  11. 추적 수첩 (종목 포착 → 결과 기록)
+#  11. 추적 수첩
 # ════════════════════════════════════════════════════════════
 def add_tracker(row):
     entry={
-        "포착일":today_str(),
-        "포착시각":now_hms(),
-        "코드":row["코드"],
-        "종목명":row["종목명"],
-        "포착가":row["현재가"],
-        "목표가":row.get("목표가",0),
-        "손절가":row.get("손절가",0),
-        "등급":row.get("추천등급",""),
-        "점수":row.get("매수점수",0),
-        "결과가":None,
-        "결과률":None,
-        "결과":None,   # WIN / LOSS / OPEN
+        "포착일":      today_str(),
+        "포착시각":    now_hms(),
+        "코드":        row["코드"],
+        "종목명":      row["종목명"],
+        "포착가":      row["현재가"],
+        "목표가":      row.get("목표가", 0),
+        "손절가":      row.get("손절가", 0),
+        "등급":        row.get("추천등급", ""),
+        "점수":        row.get("매수점수", 0),
+        # 경과 수익률 — 자동 조회
+        "3일후가":     None, "3일수익률":  None,
+        "1주후가":     None, "1주수익률":  None,
+        "1달후가":     None, "1달수익률":  None,
+        "3달후가":     None, "3달수익률":  None,
+        # 수동 결과
+        "결과가":      None,
+        "결과률":      None,
+        "결과":        None,  # WIN / LOSS / OPEN
     }
     st.session_state.tracker.append(entry)
 
 def close_tracker(idx, result_price):
-    t=st.session_state.tracker[idx]
-    entry_p=t["포착가"]
-    if entry_p and entry_p>0:
-        pct=(result_price-entry_p)/entry_p*100
-        t["결과가"]=result_price
-        t["결과률"]=round(pct,2)
-        t["결과"]="WIN" if pct>0 else "LOSS"
-    st.session_state.tracker[idx]=t
+    t = st.session_state.tracker[idx]
+    entry_p = t["포착가"]
+    if entry_p and entry_p > 0:
+        pct = (result_price - entry_p) / entry_p * 100
+        t["결과가"]  = result_price
+        t["결과률"]  = round(pct, 2)
+        t["결과"]    = "WIN" if pct > 0 else "LOSS"
+    st.session_state.tracker[idx] = t
+
+def _pct(entry_price, current_price):
+    if entry_price and entry_price > 0 and current_price:
+        return round((current_price - entry_price) / entry_price * 100, 2)
+    return None
+
+def auto_fill_tracker(idx):
+    """
+    포착일 기준 3일 / 1주(5영업일) / 1달(21영업일) / 3달(63영업일) 후
+    종가를 한투 일별 시세 API로 자동 조회해서 채워넣기
+    """
+    t   = st.session_state.tracker[idx]
+    cd  = t["코드"]
+    ep  = t["포착가"]
+    fd  = t["포착일"].replace("-", "")  # YYYYMMDD
+
+    periods = {
+        "3일":  (3,  "3일후가",  "3일수익률"),
+        "1주":  (5,  "1주후가",  "1주수익률"),
+        "1달":  (21, "1달후가",  "1달수익률"),
+        "3달":  (63, "3달후가",  "3달수익률"),
+    }
+    changed = False
+    for label, (n, price_key, pct_key) in periods.items():
+        if t.get(price_key) is not None:
+            continue  # 이미 채워진 것은 스킵
+        target = nth_business_day(fd, n)
+        today  = datetime.now().strftime("%Y%m%d")
+        if target > today:
+            continue   # 아직 해당일 안 됨
+        price = get_price_on_date(cd, target)
+        time.sleep(0.1)
+        if price:
+            t[price_key] = price
+            t[pct_key]   = _pct(ep, price)
+            changed = True
+    if changed:
+        st.session_state.tracker[idx] = t
+    return changed
 
 
 # ════════════════════════════════════════════════════════════
@@ -867,89 +1282,109 @@ def chart_tracker_summary():
 #  13. 카드 렌더러
 # ════════════════════════════════════════════════════════════
 def sig_badges(sigs):
-    labels={"SIG1_수급강도":"수급","SIG2_기관동반":"기관","SIG3_프로그램":"프로그램",
-            "SIG4_급등":"급등","SIG5_연속매수":"연속매수","SIG6_분봉방향":"분봉↑",
-            "SIG7_바닥권":"바닥권","SIG8_거래량":"거래량","SIG9_시간대":"황금시간"}
-    maxes={"SIG1_수급강도":20,"SIG2_기관동반":10,"SIG3_프로그램":10,
-           "SIG4_급등":15,"SIG5_연속매수":10,"SIG6_분봉방향":10,
-           "SIG7_바닥권":10,"SIG8_거래량":10,"SIG9_시간대":5}
-    parts=[]
-    for k,lbl in labels.items():
-        v=sigs.get(k,0)
-        mx=maxes.get(k,10)
-        if v>=mx*0.7:      cls="sig-on"
-        elif v>=mx*0.3:    cls="sig-warn"
-        else:              cls="sig-off"
-        parts.append(f'<span class="sig {cls}">{lbl}</span>')
+    labels = {"SIG1_수급강도":"수급","SIG2_기관동반":"기관","SIG3_프로그램":"프로그램",
+              "SIG4_급등":"급등","SIG5_연속매수":"연속매수","SIG6_분봉방향":"분봉↑",
+              "SIG7_바닥권":"바닥권","SIG8_거래량":"거래량","SIG9_시간대":"황금시간"}
+    maxes  = {"SIG1_수급강도":20,"SIG2_기관동반":10,"SIG3_프로그램":10,
+              "SIG4_급등":15,"SIG5_연속매수":10,"SIG6_분봉방향":10,
+              "SIG7_바닥권":10,"SIG8_거래량":10,"SIG9_시간대":5}
+    icons  = {"SIG1_수급강도":"⚡","SIG2_기관동반":"🏦","SIG3_프로그램":"🔥",
+              "SIG4_급등":"📈","SIG5_연속매수":"📅","SIG6_분봉방향":"🕯",
+              "SIG7_바닥권":"📉","SIG8_거래량":"💥","SIG9_시간대":"⏰"}
+    parts = []
+    for k, lbl in labels.items():
+        v  = sigs.get(k, 0)
+        mx = maxes.get(k, 10)
+        ic = icons.get(k, "")
+        if v >= mx * 0.7:   cls = "sig-on"
+        elif v >= mx * 0.3: cls = "sig-warn"
+        else:               cls = "sig-off"
+        parts.append(f'<span class="sig {cls}">{ic} {lbl}</span>')
     return "".join(parts)
+
 
 def render_buy_cards(rows, max_c=30):
     if not rows:
         st.info("현재 조건에 맞는 매수 추천 종목이 없습니다.")
         return
-    gc_border={"S":"var(--rd)","A":"var(--or)","B":"var(--bl)"}
-    html=['<div class="sg">']
+    html = ['<div class="sg">']
     for r in rows[:max_c]:
-        g=r["추천등급"]
-        pc=r["현재가"]; pr=r["등락률"]
-        prc="up" if pr>0 else "dn" if pr<0 else "flat"
-        bar=min(100,int(r["매수점수"]))
-        sigs_html=sig_badges(r.get("시그널",{}))
-        rsn=r.get("사유","").replace("\n","<br>")
-        tp=r.get("목표가",0); sl=r.get("손절가",0)
-        tp_pct=r.get("목표수익률",""); sl_pct=r.get("손절률","")
+        g   = r["추천등급"]
+        pc  = r["현재가"]; pr = r["등락률"]
+        prc = "up" if pr > 0 else "dn" if pr < 0 else "flat"
+        bar = min(100, int(r["매수점수"]))
+        sigs_html = sig_badges(r.get("시그널", {}))
+        rsn = r.get("사유","").replace("\n","<br>")
+        tp  = r.get("목표가", 0); sl = r.get("손절가", 0)
+        tp_pct = r.get("목표수익률",""); sl_pct = r.get("손절률","")
+        sc_color = {"S":"#fb7185","A":"#fb923c","B":"#7dd3fc"}.get(g,"#94a3b8")
+
         html.append(f"""
 <div class="sc sc-{g}">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-    <div><div class="sc-name">{r['종목명']}</div>
-         <div class="sc-code">{r['코드']} · {r['시장']}</div></div>
-    <div style="text-align:right;">
-      <span style="background:{'#3b0a0a' if g=='S' else '#2a1a00' if g=='A' else '#0a1a3a'};
-        color:{'#f87171' if g=='S' else '#fbbf24' if g=='A' else '#60a5fa'};
-        border:1px solid {'var(--rd)' if g=='S' else 'var(--or)' if g=='A' else 'var(--bl)'};
-        padding:2px 8px;border-radius:99px;font-size:.72rem;font-weight:700;">{g}등급</span>
-      <div style="font-size:.78rem;color:{'#f87171' if g=='S' else '#fbbf24' if g=='A' else '#60a5fa'};
-        font-weight:700;margin-top:2px;">★{r['매수점수']:.0f}pt</div>
+  <div class="sc-header">
+    <div>
+      <div class="sc-name">{r['종목명']}</div>
+      <div class="sc-code">{r['코드']} &nbsp;·&nbsp; {r['시장']}</div>
     </div>
+    <span class="sc-badge sc-badge-{g}">{g}등급</span>
   </div>
-  <div class="sc-price">{pc:,}원 <span class="{prc}" style="font-size:.8rem;">{pr:+.2f}%</span></div>
+  <div class="sc-price-row">
+    <span class="sc-price">{pc:,}<span style="font-size:.68rem;color:#4a607a;margin-left:2px;">원</span></span>
+    <span class="{prc}" style="font-size:.82rem;">{pr:+.2f}%</span>
+    <span class="sc-score" style="color:{sc_color};">★&nbsp;{r['매수점수']:.0f}pt</span>
+  </div>
   <div class="sc-bar-wrap"><div class="sc-bar-buy" style="width:{bar}%"></div></div>
   <div class="sc-sigs">{sigs_html}</div>
-  <div class="sc-tp">🎯 목표가 {tp:,}원 ({tp_pct})</div>
-  <div class="sc-sl">🛑 손절가 {sl:,}원 ({sl_pct})</div>
-  <div style="font-size:.7rem;color:#4a6080;margin-top:.3rem;line-height:1.7;">{rsn}</div>
+  <div class="sc-tpsl">
+    <div class="sc-tp-box">
+      <div class="sc-tp-lbl">🎯 TARGET</div>
+      <div class="sc-tp-val">{tp:,}원&nbsp;<span style="font-size:.65rem;opacity:.8;">{tp_pct}</span></div>
+    </div>
+    <div class="sc-sl-box">
+      <div class="sc-sl-lbl">🛑 STOP</div>
+      <div class="sc-sl-val">{sl:,}원&nbsp;<span style="font-size:.65rem;opacity:.8;">{sl_pct}</span></div>
+    </div>
+  </div>
+  <div class="sc-reason">{rsn}</div>
 </div>""")
     html.append('</div>')
-    st.markdown("".join(html),unsafe_allow_html=True)
+    st.markdown("".join(html), unsafe_allow_html=True)
+
 
 def render_sell_cards(rows, max_c=20):
     if not rows:
         st.info("현재 매도 경보 종목이 없습니다.")
         return
-    html=['<div class="sg">']
+    html = ['<div class="sg">']
     for r in rows[:max_c]:
-        sc=r["매도경보점수"]
-        pc=r["현재가"]; pr=r["등락률"]
-        prc="up" if pr>0 else "dn" if pr<0 else "flat"
-        bar=min(100,int(sc))
-        rsn=r.get("사유","").replace("\n","<br>")
-        alert_lbl="🚨 강력매도" if sc>=70 else "⚠️ 매도경보"
-        alert_c="#a78bfa" if sc>=70 else "#818cf8"
+        sc  = r["매도경보점수"]
+        pc  = r["현재가"]; pr = r["등락률"]
+        prc = "up" if pr > 0 else "dn" if pr < 0 else "flat"
+        bar = min(100, int(sc))
+        rsn = r.get("사유","").replace("\n","<br>")
+        is_strong = sc >= 70
+        alert_lbl = "🚨 강력매도" if is_strong else "⚠️ 매도경보"
+        alert_c   = "#c084fc" if is_strong else "#a5b4fc"
+
         html.append(f"""
 <div class="sc sc-sell">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-    <div><div class="sc-name">{r['종목명']}</div>
-         <div class="sc-code">{r['코드']} · {r['시장']}</div></div>
-    <span style="background:#1a0a2a;color:{alert_c};border:1px solid var(--pu);
-      padding:2px 8px;border-radius:99px;font-size:.72rem;font-weight:700;">{alert_lbl}</span>
+  <div class="sc-header">
+    <div>
+      <div class="sc-name">{r['종목명']}</div>
+      <div class="sc-code">{r['코드']} &nbsp;·&nbsp; {r['시장']}</div>
+    </div>
+    <span class="sc-badge sc-badge-sell">{alert_lbl}</span>
   </div>
-  <div class="sc-price">{pc:,}원 <span class="{prc}" style="font-size:.8rem;">{pr:+.2f}%</span></div>
+  <div class="sc-price-row">
+    <span class="sc-price">{pc:,}<span style="font-size:.68rem;color:#4a607a;margin-left:2px;">원</span></span>
+    <span class="{prc}" style="font-size:.82rem;">{pr:+.2f}%</span>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:.78rem;font-weight:700;color:{alert_c};margin-left:auto;">🔔&nbsp;{sc:.0f}pt</span>
+  </div>
   <div class="sc-bar-wrap"><div class="sc-bar-sell" style="width:{bar}%"></div></div>
-  <div style="font-size:.78rem;color:{alert_c};font-weight:700;margin:.25rem 0;">🔔 경보 {sc:.0f}점</div>
-  <div style="font-size:.7rem;color:#4a6080;line-height:1.7;">{rsn}</div>
+  <div class="sc-reason">{rsn}</div>
 </div>""")
     html.append('</div>')
-    st.markdown("".join(html),unsafe_allow_html=True)
+    st.markdown("".join(html), unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════
@@ -1009,23 +1444,36 @@ with st.sidebar:
 #  15. 메인 헤더
 # ════════════════════════════════════════════════════════════
 st.markdown("""
-<div style="background:linear-gradient(135deg,#0d1829,#0e1c38,#0d1622);
-     border:1px solid #1a2d45;border-radius:14px;padding:1.2rem 1.6rem;margin-bottom:1rem;">
-  <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
-    <span style="font-size:1.8rem;">💰</span>
+<div style="position:relative;overflow:hidden;background:linear-gradient(135deg,#0a1628 0%,#0d1f3c 50%,#0a1628 100%);
+     border:1px solid #1c2e4a;border-radius:18px;padding:1.4rem 1.8rem;margin-bottom:1.1rem;">
+  <!-- 배경 글로우 -->
+  <div style="position:absolute;top:-40px;right:-40px;width:200px;height:200px;
+    background:radial-gradient(circle,rgba(79,142,247,.12) 0%,transparent 70%);pointer-events:none;"></div>
+  <div style="position:absolute;bottom:-30px;left:20%;width:150px;height:150px;
+    background:radial-gradient(circle,rgba(34,197,94,.07) 0%,transparent 70%);pointer-events:none;"></div>
+  <!-- 콘텐츠 -->
+  <div style="display:flex;align-items:center;gap:1rem;position:relative;">
+    <div style="width:46px;height:46px;background:linear-gradient(135deg,#1d4ed8,#06b6d4);
+      border-radius:12px;display:flex;align-items:center;justify-content:center;
+      font-size:1.4rem;flex-shrink:0;box-shadow:0 4px 15px rgba(37,99,235,.35);">💰</div>
     <div>
-      <div style="font-size:1.45rem;font-weight:900;color:#f0f6ff;letter-spacing:.02em;">
-        스마트 머니 트래커
-        <span style="font-size:.78rem;font-weight:400;color:#4a6a8a;margin-left:.4rem;">v5.0</span>
+      <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
+        <span style="font-size:1.5rem;font-weight:900;color:#f0f6ff;letter-spacing:.01em;">스마트 머니 트래커</span>
+        <span style="font-size:.7rem;background:rgba(79,142,247,.15);color:#7dd3fc;
+          border:1px solid rgba(79,142,247,.3);padding:2px 8px;border-radius:99px;font-weight:700;">v5.0</span>
+        <span style="font-size:.7rem;background:rgba(34,197,94,.12);color:#4ade80;
+          border:1px solid rgba(34,197,94,.25);padding:2px 8px;border-radius:99px;font-weight:700;">KIS API</span>
       </div>
-      <div style="font-size:.8rem;color:#5a7898;margin-top:.18rem;">
-        한국투자증권 KIS API 전용  ·  9개 시그널 통합 점수  ·
-        분봉+연속매수일+거래대금 기반 알고리즘  ·  목표가/손절가 자동 계산
+      <div style="font-size:.78rem;color:#5a7898;margin-top:.3rem;line-height:1.6;">
+        외국인·기관·프로그램 수급 포착
+        <span style="color:#2d4060;margin:0 .4rem;">·</span>9개 시그널 알고리즘
+        <span style="color:#2d4060;margin:0 .4rem;">·</span>목표가/손절가 자동 계산
+        <span style="color:#2d4060;margin:0 .4rem;">·</span>경과 수익률 자동 추적
       </div>
     </div>
   </div>
 </div>
-""",unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════
@@ -1090,6 +1538,18 @@ top_sc=buy_ranks[0]["매수점수"] if buy_ranks else 0
 top_sell=sell_ranks[0]["매도경보점수"] if sell_ranks else 0
 sess=market_session()
 sess_label={"prime":"🟢 황금시간대","caution":"🟡 마감 시간대","normal":"🔵 장 중","closed":"⚫ 장 외"}.get(sess,"")
+data_basis = st.session_state.get("last_data_date","")
+
+# 장외 시간 안내 배너
+if sess in ("closed","caution") and data_basis:
+    basis_color = "#f59e0b" if "전일" in data_basis else "#10b981"
+    st.markdown(f"""
+<div style="background:#1c1407;border:1px solid #f59e0b;border-radius:8px;
+     padding:.5rem 1rem;margin-bottom:.6rem;font-size:.83rem;color:#fbbf24;">
+  📅 <b>{'전일 마감 데이터 기준' if '전일' in data_basis else '실시간 데이터'}</b>
+  — 장 중(평일 09:00~15:30)에는 실시간 수급 데이터로 자동 전환됩니다.
+</div>
+""", unsafe_allow_html=True)
 
 m1,m2,m3,m4,m5,m6=st.columns(6)
 m1.metric("🔴 S등급 매수",f"{s_cnt}개")
@@ -1293,70 +1753,139 @@ with tab_trend:
 
 # ── 탭: 추적 수첩 ────────────────────────────────────────
 with tab_track:
-    st.markdown('<div class="sh sh-track">📓 추적 수첩 — 포착 종목 성과 기록</div>',unsafe_allow_html=True)
-    st.caption("매수 추천 탭의 테이블 하단에서 종목을 등록하면 여기서 결과를 기록할 수 있습니다.")
+    st.markdown('<div class="sh sh-track">📓 추적 수첩 — 포착 종목 경과 수익률 자동 추적</div>',unsafe_allow_html=True)
+    st.caption("포착 종목을 등록하면 3일 / 1주 / 1달 / 3달 후 종가를 한투 API로 자동 조회합니다.")
 
-    tracker=st.session_state.tracker
+    tracker = st.session_state.tracker
+
+    # ── 빠른 등록 버튼 (상단 노출) ──────────────────────────
+    if buy_ranks:
+        with st.expander("➕ 종목 빠르게 등록하기", expanded=not bool(tracker)):
+            sel = st.selectbox("등록할 종목 선택",
+                [f"{r['종목명']} ({r['코드']}) — {r['추천등급']}등급 {r['매수점수']:.0f}pt"
+                 for r in buy_ranks], key="sel_track2")
+            if st.button("📓 추적 수첩에 등록", key="add_track2"):
+                idx = next((i for i,r in enumerate(buy_ranks) if r["코드"] in sel), None)
+                if idx is not None:
+                    add_tracker(buy_ranks[idx])
+                    st.success(f"✅ {buy_ranks[idx]['종목명']} 등록 완료!")
+                    st.rerun()
 
     if not tracker:
-        st.info("아직 추적 중인 종목이 없습니다.\n\n매수 추천 탭 → 테이블로 보기 → 추적 수첩에 등록")
+        st.info("아직 추적 중인 종목이 없습니다.\n\n위 **➕ 종목 빠르게 등록하기**에서 추가해보세요.")
     else:
-        # 성과 요약
-        closed=[t for t in tracker if t["결과률"] is not None]
-        wins=  [t for t in closed if t["결과"]=="WIN"]
-        losses=[t for t in closed if t["결과"]=="LOSS"]
-        opens= [t for t in tracker if t["결과"] is None]
-        avg_r= sum(t["결과률"] for t in closed)/len(closed) if closed else 0
-        wr=    len(wins)/len(closed)*100 if closed else 0
+        # ── 경과 수익률 자동 갱신 버튼 ──────────────────────
+        col_auto1, col_auto2, _ = st.columns([1,1,4])
+        if col_auto1.button("🔄 경과 수익률 자동 갱신", key="auto_fill"):
+            updated = 0
+            prog_t = st.progress(0, "조회 중...")
+            for i in range(len(tracker)):
+                prog_t.progress((i+1)/len(tracker), f"{tracker[i]['종목명']} 조회 중...")
+                if auto_fill_tracker(i):
+                    updated += 1
+            prog_t.empty()
+            st.success(f"✅ {updated}건 갱신 완료!")
+            st.rerun()
+        col_auto2.caption("포착 후 경과일 기준으로\n3일/1주/1달/3달 종가를 자동 조회합니다.")
 
-        mc1,mc2,mc3,mc4=st.columns(4)
-        mc1.metric("📊 전체 등록",f"{len(tracker)}건")
-        mc2.metric("✅ 수익",f"{len(wins)}건")
-        mc3.metric("❌ 손실",f"{len(losses)}건")
-        mc4.metric("📈 평균 수익률",f"{avg_r:+.2f}%",delta=f"승률 {wr:.0f}%")
+        # ── 성과 요약 ────────────────────────────────────────
+        closed = [t for t in tracker if t.get("결과률") is not None]
+        wins   = [t for t in closed if t.get("결과") == "WIN"]
+        losses = [t for t in closed if t.get("결과") == "LOSS"]
+        avg_r  = sum(t["결과률"] for t in closed) / len(closed) if closed else 0
+        wr     = len(wins)/len(closed)*100 if closed else 0
+
+        # 1달 수익률 평균 (자동 조회 기준)
+        one_m  = [t for t in tracker if t.get("1달수익률") is not None]
+        avg_1m = sum(t["1달수익률"] for t in one_m) / len(one_m) if one_m else None
+
+        mc1,mc2,mc3,mc4,mc5 = st.columns(5)
+        mc1.metric("📊 전체 등록",  f"{len(tracker)}건")
+        mc2.metric("✅ 수익(수동)", f"{len(wins)}건")
+        mc3.metric("❌ 손실(수동)", f"{len(losses)}건")
+        mc4.metric("📈 평균(수동)", f"{avg_r:+.2f}%" if closed else "-",
+                   delta=f"승률 {wr:.0f}%" if closed else None)
+        mc5.metric("📅 1달 평균",  f"{avg_1m:+.2f}%" if avg_1m is not None else "집계 중")
 
         if closed:
-            st.plotly_chart(chart_tracker_summary(),use_container_width=True)
+            st.plotly_chart(chart_tracker_summary(), use_container_width=True)
 
-        st.markdown('<div class="sh sh-track" style="font-size:.85rem;">기록 목록</div>',unsafe_allow_html=True)
+        # ── 종목별 카드 ──────────────────────────────────────
+        st.markdown('<div class="sh sh-track" style="font-size:.85rem;">종목별 경과 기록</div>',
+                    unsafe_allow_html=True)
 
-        for idx,t in enumerate(tracker):
-            res=t.get("결과")
-            cls="track-win" if res=="WIN" else "track-loss" if res=="LOSS" else "track-open"
-            icon="✅" if res=="WIN" else "❌" if res=="LOSS" else "⏳"
-            pct_txt=f"{t['결과률']:+.2f}%" if t["결과률"] is not None else "미결"
-            pct_c="#4ade80" if res=="WIN" else "#f87171" if res=="LOSS" else "#f59e0b"
+        def _pct_cell(v):
+            if v is None: return '<span style="color:#4a6080;">집계 중</span>'
+            c = "#4ade80" if v > 0 else "#f87171" if v < 0 else "#94a3b8"
+            return f'<span style="color:{c};font-weight:700;">{v:+.2f}%</span>'
+
+        for idx, t in enumerate(tracker):
+            res  = t.get("결과")
+            cls  = "track-win" if res=="WIN" else "track-loss" if res=="LOSS" else "track-open"
+            icon = "✅" if res=="WIN" else "❌" if res=="LOSS" else "⏳"
+            pct_txt = f"{t['결과률']:+.2f}%" if t.get("결과률") is not None else "미결"
+            pct_c   = "#4ade80" if res=="WIN" else "#f87171" if res=="LOSS" else "#f59e0b"
+
+            # 경과 수익률 셀 4개
+            d3  = _pct_cell(t.get("3일수익률"))
+            d7  = _pct_cell(t.get("1주수익률"))
+            d30 = _pct_cell(t.get("1달수익률"))
+            d90 = _pct_cell(t.get("3달수익률"))
 
             st.markdown(f"""
 <div class="track-card {cls}">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.3rem;">
     <div>
       <span style="font-size:.9rem;font-weight:700;color:#e2e8f0;">{icon} {t['종목명']}</span>
-      <span style="font-size:.72rem;color:var(--mt);margin-left:.4rem;">{t['코드']} · {t['등급']}등급 {t['점수']:.0f}pt</span>
+      <span style="font-size:.72rem;color:var(--mt);margin-left:.5rem;">{t['코드']} · {t.get('등급','')}등급 {t.get('점수',0):.0f}pt</span>
     </div>
-    <span style="font-size:.9rem;font-weight:700;color:{pct_c};">{pct_txt}</span>
+    <span style="font-size:.88rem;font-weight:700;color:{pct_c};">{pct_txt}</span>
   </div>
-  <div style="font-size:.75rem;color:var(--mt);margin-top:.3rem;line-height:1.8;">
-    포착: {t['포착일']} {t['포착시각']} · 포착가: {t['포착가']:,}원 ·
-    목표: {t.get('목표가',0):,}원 · 손절: {t.get('손절가',0):,}원
-    {f"· 결과가: {t['결과가']:,}원" if t.get('결과가') else ""}
+  <div style="font-size:.74rem;color:var(--mt);margin-top:.3rem;line-height:1.9;">
+    포착: {t['포착일']} {t['포착시각']}
+    &nbsp;·&nbsp; 포착가: <b style="color:#e2e8f0;">{t['포착가']:,}원</b>
+    &nbsp;·&nbsp; 🎯 목표: {t.get('목표가',0):,}원
+    &nbsp;·&nbsp; 🛑 손절: {t.get('손절가',0):,}원
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;margin-top:.45rem;">
+    <div style="background:#0d1220;border:1px solid #1a2d45;border-radius:6px;padding:.35rem .5rem;text-align:center;">
+      <div style="font-size:.68rem;color:#4a6080;margin-bottom:2px;">3일 후</div>
+      <div style="font-size:.8rem;">{d3}</div>
+      <div style="font-size:.67rem;color:#4a6080;">{f"{t['3일후가']:,}원" if t.get('3일후가') else "—"}</div>
+    </div>
+    <div style="background:#0d1220;border:1px solid #1a2d45;border-radius:6px;padding:.35rem .5rem;text-align:center;">
+      <div style="font-size:.68rem;color:#4a6080;margin-bottom:2px;">1주 후</div>
+      <div style="font-size:.8rem;">{d7}</div>
+      <div style="font-size:.67rem;color:#4a6080;">{f"{t['1주후가']:,}원" if t.get('1주후가') else "—"}</div>
+    </div>
+    <div style="background:#0d1220;border:1px solid #1a2d45;border-radius:6px;padding:.35rem .5rem;text-align:center;">
+      <div style="font-size:.68rem;color:#4a6080;margin-bottom:2px;">1달 후</div>
+      <div style="font-size:.8rem;">{d30}</div>
+      <div style="font-size:.67rem;color:#4a6080;">{f"{t['1달후가']:,}원" if t.get('1달후가') else "—"}</div>
+    </div>
+    <div style="background:#0d1220;border:1px solid #1a2d45;border-radius:6px;padding:.35rem .5rem;text-align:center;">
+      <div style="font-size:.68rem;color:#4a6080;margin-bottom:2px;">3달 후</div>
+      <div style="font-size:.8rem;">{d90}</div>
+      <div style="font-size:.67rem;color:#4a6080;">{f"{t['3달후가']:,}원" if t.get('3달후가') else "—"}</div>
+    </div>
   </div>
 </div>
-""",unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-            # 결과 입력 (미결 건만)
+            # 수동 결과 입력 (미결 건만)
             if res is None:
-                with st.expander(f"결과 입력 — {t['종목명']}",expanded=False):
-                    rp=st.number_input("결과 매도가 (원)",
+                with st.expander(f"✏️ 수동 결과 입력 — {t['종목명']}", expanded=False):
+                    rp = st.number_input("매도 체결가 (원)",
                         min_value=1, value=int(t["포착가"]),
                         key=f"rp_{idx}_{t['코드']}")
-                    if st.button(f"✅ 결과 기록",key=f"close_{idx}"):
-                        close_tracker(idx,rp)
+                    if st.button("✅ 결과 기록", key=f"close_{idx}"):
+                        close_tracker(idx, rp)
                         st.success("기록 완료!")
                         st.rerun()
 
-        if st.button("🗑️ 전체 초기화",key="clear_track"):
-            st.session_state.tracker=[]
+        st.divider()
+        if st.button("🗑️ 전체 초기화", key="clear_track"):
+            st.session_state.tracker = []
             st.rerun()
 
 
