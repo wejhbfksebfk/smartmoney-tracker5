@@ -924,8 +924,140 @@ def calc_tp_sl(price, grade, cfg):
 # ════════════════════════════════════════════════════════════
 #  10. 전체 파이프라인
 # ════════════════════════════════════════════════════════════
+
+# ── 장외 전용: 전일 수급 상위 종목 직접 조회 ────────────────
+def fetch_eod_investor_top():
+    """
+    장외 시간용 — FHPST02060000 으로 전일 기준 외국인 순매수 상위 조회
+    (한투 API는 장외에도 전일 마감 수급 순위를 반환함)
+    시간대 필터 없이 단순 순위 데이터만 가져옴
+    """
+    url = f"{burl()}/uapi/domestic-stock/v1/quotations/foreign-institution-total"
+    out = []
+    for mkt in ["J", "Q"]:
+        for inv_code, inv_label in [("1","외국인"),("2","기관")]:
+            d = ag(url, "FHPST02060000", {
+                "fid_cond_mrkt_div_code": mkt,
+                "fid_cond_scr_div_code":  "16448",
+                "fid_input_iscd":         "0000",
+                "fid_div_cls_code":       "1",
+                "fid_rank_sort_cls_code": "0",
+                "fid_input_cnt_1":        "30",
+                "fid_etc_cls_code":       inv_code,
+            })
+            if d and d.get("output"):
+                for row in d["output"]:
+                    qty = iv(row.get("frgn_ntby_qty", row.get("orgn_ntby_qty", 0)))
+                    amt = iv(row.get("frgn_ntby_tr_pbmn", row.get("orgn_ntby_tr_pbmn", 0)))
+                    cd  = row.get("mksc_shrn_iscd","").strip()
+                    if not cd or qty <= 0: continue
+                    out.append({
+                        "코드":    cd,
+                        "종목명":  row.get("hts_kor_isnm","").strip(),
+                        "시장":    "KOSPI" if mkt=="J" else "KOSDAQ",
+                        "투자자":  inv_label,
+                        "현재가":  iv(row.get("stck_prpr", 0)),
+                        "등락률":  fv(row.get("prdy_ctrt", 0)),
+                        "순매수량": qty,
+                        "거래대금(백만)": round(amt/1_000_000, 1),
+                    })
+            time.sleep(0.12)
+    return out
+
+
+def run_eod_pipeline(cfg, log_fn):
+    """
+    장외 전용 파이프라인
+    - 분봉/거래량비율 없이 기본 수급 점수만 계산
+    - 필터 조건 대폭 완화
+    - 훨씬 빠름 (분봉 API 생략)
+    """
+    log_fn("📅 전일 마감 수급 데이터 수집 중...")
+    rows = fetch_eod_investor_top()
+
+    if not rows:
+        log_fn("⚠️ 전일 데이터도 없습니다. API 키를 확인해주세요.")
+        return [], [], []
+
+    # 중복 제거 (외국인 우선)
+    seen, deduped = set(), []
+    for r in sorted(rows, key=lambda x: x["순매수량"], reverse=True):
+        if r["코드"] not in seen:
+            seen.add(r["코드"])
+            deduped.append(r)
+
+    buy_cands  = deduped[:40]
+    sell_cands = sorted([r for r in rows if r["순매수량"] < 0],
+                        key=lambda x: x["순매수량"])[:20]
+
+    # 완화된 필터 설정
+    cfg_eod = {**cfg,
+               "max_prdy":   15.0,   # 등락률 제한 완화
+               "time_filter": False, # 시간대 가산 OFF
+               "threshold":   2.0,   # 점수 기준 20점으로 낮춤
+               "min_vol":     0.5,   # 거래량 기준 완화
+               "min_amt":     50,    # 거래대금 기준 완화
+               "surge":       1.2,   # 급등 기준 완화
+               "from_52w":    50.0,  # 52주 저점 기준 완화
+               }
+
+    log_fn(f"🔬 전일 기준 분석 중 ({len(buy_cands)}종목)...")
+    buy_ranks = []
+    for idx, row in enumerate(buy_cands, 1):
+        cd = row["코드"]
+        log_fn(f"   [{idx}/{len(buy_cands)}] {row['종목명']}")
+        det   = fetch_detail(cd); time.sleep(0.05)
+        daily = fetch_investor_daily(cd); time.sleep(0.07)
+
+        sc, grade, ok, sigs, msgs = calc_buy_score(
+            cd, row["순매수량"], row["거래대금(백만)"],
+            row["등락률"], det,
+            False, False, False,   # 장외엔 기관/프로그램/거래량 동반 체크 생략
+            daily, [],             # 분봉 생략
+            cfg_eod, "normal")
+        if not ok: continue
+
+        tp, sl, tp_pct, sl_pct = calc_tp_sl(row["현재가"], grade, cfg_eod)
+        buy_ranks.append({**row,
+            "기관동반": "-", "프로그램": "-", "거래량급증": "-",
+            "추천등급": grade, "매수점수": sc,
+            "목표가": tp, "목표수익률": f"+{tp_pct:.1f}%",
+            "손절가": sl, "손절률":     f"-{sl_pct:.1f}%",
+            "시그널": sigs,
+            "사유": "📅 전일 마감 기준\n" + "\n".join(msgs),
+        })
+
+    buy_ranks.sort(key=lambda x: x["매수점수"], reverse=True)
+
+    log_fn(f"🔬 전일 기준 매도 분석 중 ({len(sell_cands)}종목)...")
+    sell_ranks = []
+    for row in sell_cands:
+        cd  = row["코드"]
+        det = fetch_detail(cd); time.sleep(0.05)
+        daily = fetch_investor_daily(cd); time.sleep(0.07)
+        sc, sigs, msgs = calc_sell_score(cd, row["순매수량"],
+                                         row["등락률"], det, daily, [])
+        if sc < 10: continue
+        sell_ranks.append({**row, "매도경보점수": sc, "시그널": sigs,
+                           "사유": "📅 전일 마감 기준\n" + "\n".join(msgs)})
+    sell_ranks.sort(key=lambda x: x["매도경보점수"], reverse=True)
+
+    log_fn(f"✅ 완료! 전일 기준 매수추천 {len(buy_ranks)}개 · 매도경보 {len(sell_ranks)}개")
+    return buy_ranks, sell_ranks, []
+
+
 def run_pipeline(cfg, log_fn):
     session = market_session()
+
+    # ── 장외 시간이면 전일 전용 파이프라인으로 바로 분기 ──────
+    if session in ("closed", "caution"):
+        log_fn("🔐 토큰 확인 중...")
+        get_token()
+        st.session_state.last_data_date = "전일 마감 기준"
+        return run_eod_pipeline(cfg, log_fn)
+
+    # ── 장중 실시간 파이프라인 ─────────────────────────────────
+    st.session_state.last_data_date = "실시간"
     log_fn("🔐 토큰 확인 중...")
     get_token()
 
@@ -938,145 +1070,89 @@ def run_pipeline(cfg, log_fn):
     log_fn("📡 거래량 순위 수집 중...")
     vol = fetch_vol_rank()
 
-    # 집합 구성
-    org_set={r.get("mksc_shrn_iscd","").strip() for r in org
-             if iv(r.get("orgn_ntby_qty",0))>0 and r.get("mksc_shrn_iscd","").strip()}
-    prg_set={r.get("mksc_shrn_iscd","").strip() for r in prg
-             if iv(r.get("pgm_ntby_tr_pbmn",r.get("ntby_tr_pbmn",0)))>0
-             and r.get("mksc_shrn_iscd","").strip()}
-    vol_set={r.get("mksc_shrn_iscd","").strip() for r in vol}
+    org_set = {r.get("mksc_shrn_iscd","").strip() for r in org
+               if iv(r.get("orgn_ntby_qty",0))>0}
+    prg_set = {r.get("mksc_shrn_iscd","").strip() for r in prg
+               if iv(r.get("pgm_ntby_tr_pbmn",r.get("ntby_tr_pbmn",0)))>0}
+    vol_set = {r.get("mksc_shrn_iscd","").strip() for r in vol}
 
-    # 외국인 정규화
     def norm_frg(raw):
-        out=[]
+        out = []
         for row in raw:
-            cd=row.get("mksc_shrn_iscd","").strip()
+            cd  = row.get("mksc_shrn_iscd","").strip()
             if not cd: continue
-            qty=iv(row.get("frgn_ntby_qty",0))
-            amt=iv(row.get("frgn_ntby_tr_pbmn",0))
-            push_hist(cd,qty)
+            qty = iv(row.get("frgn_ntby_qty",0))
+            amt = iv(row.get("frgn_ntby_tr_pbmn",0))
+            push_hist(cd, qty)
             out.append({
-                "코드":cd,"종목명":row.get("hts_kor_isnm","").strip(),
-                "시장":row.get("_mkt",""),
-                "현재가":iv(row.get("stck_prpr",0)),
-                "등락률":fv(row.get("prdy_ctrt",0)),
-                "순매수량":qty,
-                "거래대금(백만)":round(amt/1_000_000,1),
+                "코드": cd, "종목명": row.get("hts_kor_isnm","").strip(),
+                "시장": row.get("_mkt",""),
+                "현재가": iv(row.get("stck_prpr",0)),
+                "등락률": fv(row.get("prdy_ctrt",0)),
+                "순매수량": qty,
+                "거래대금(백만)": round(amt/1_000_000, 1),
             })
         return out
 
-    frg_list=norm_frg(frg)
-    frg_list.sort(key=lambda x:x["순매수량"],reverse=True)
+    frg_list = norm_frg(frg)
+    frg_list.sort(key=lambda x: x["순매수량"], reverse=True)
 
-    # 매수 후보: 순매수 상위 50
-    buy_cands=[r for r in frg_list if r["순매수량"]>0][:50]
-    # 매도 후보: 순매도 상위 30
-    sell_cands=sorted([r for r in frg_list if r["순매수량"]<0],
-                      key=lambda x:x["순매수량"])[:30]
+    buy_cands  = [r for r in frg_list if r["순매수량"]>0][:50]
+    sell_cands = sorted([r for r in frg_list if r["순매수량"]<0],
+                        key=lambda x: x["순매수량"])[:30]
 
-    # ── 매수 분석 ──────────────────────────────────────────
-    log_fn(f"🔬 매수 분석 중 ({len(buy_cands)}종목, 분봉+일별 포함)...")
-    buy_ranks=[]
-    for idx,row in enumerate(buy_cands,1):
-        cd=row["코드"]
+    log_fn(f"🔬 실시간 매수 분석 중 ({len(buy_cands)}종목)...")
+    buy_ranks = []
+    for idx, row in enumerate(buy_cands, 1):
+        cd = row["코드"]
         log_fn(f"   [{idx}/{len(buy_cands)}] {row['종목명']} 분석 중...")
-
-        det   = fetch_detail(cd); time.sleep(0.04)
+        det   = fetch_detail(cd);         time.sleep(0.04)
         daily = fetch_investor_daily(cd); time.sleep(0.06)
-        mins  = fetch_minute(cd,5); time.sleep(0.04)
+        mins  = fetch_minute(cd, 5);      time.sleep(0.04)
 
-        sc,grade,ok,sigs,msgs=calc_buy_score(
+        sc, grade, ok, sigs, msgs = calc_buy_score(
             cd, row["순매수량"], row["거래대금(백만)"],
             row["등락률"], det,
             cd in org_set, cd in prg_set, cd in vol_set,
             daily, mins, cfg, session)
         if not ok: continue
 
-        tp,sl,tp_pct,sl_pct=calc_tp_sl(row["현재가"],grade,cfg)
+        tp, sl, tp_pct, sl_pct = calc_tp_sl(row["현재가"], grade, cfg)
         buy_ranks.append({**row,
-            "기관동반":"O" if cd in org_set else "-",
-            "프로그램":"🔥" if cd in prg_set else "-",
+            "기관동반":  "O" if cd in org_set else "-",
+            "프로그램":  "🔥" if cd in prg_set else "-",
             "거래량급증":"💥" if cd in vol_set else "-",
-            "추천등급":grade,"매수점수":sc,
-            "목표가":tp,"목표수익률":f"+{tp_pct:.1f}%",
-            "손절가":sl,"손절률":f"-{sl_pct:.1f}%",
-            "시그널":sigs,"사유":"\n".join(msgs),
+            "추천등급": grade, "매수점수": sc,
+            "목표가": tp, "목표수익률": f"+{tp_pct:.1f}%",
+            "손절가": sl, "손절률":     f"-{sl_pct:.1f}%",
+            "시그널": sigs, "사유": "\n".join(msgs),
         })
+    buy_ranks.sort(key=lambda x: x["매수점수"], reverse=True)
 
-    buy_ranks.sort(key=lambda x:x["매수점수"],reverse=True)
-
-    # ── 매도 분석 ──────────────────────────────────────────
-    log_fn(f"🔬 매도 경보 분석 중 ({len(sell_cands)}종목)...")
-    sell_ranks=[]
-    for idx,row in enumerate(sell_cands,1):
-        cd=row["코드"]
+    log_fn(f"🔬 실시간 매도 분석 중 ({len(sell_cands)}종목)...")
+    sell_ranks = []
+    for idx, row in enumerate(sell_cands, 1):
+        cd = row["코드"]
         log_fn(f"   [{idx}/{len(sell_cands)}] {row['종목명']} 분석 중...")
-        det   = fetch_detail(cd); time.sleep(0.04)
+        det   = fetch_detail(cd);         time.sleep(0.04)
         daily = fetch_investor_daily(cd); time.sleep(0.06)
-        mins  = fetch_minute(cd,5); time.sleep(0.04)
-        sc,sigs,msgs=calc_sell_score(cd,row["순매수량"],row["등락률"],det,daily,mins)
-        if sc<20: continue
-        sell_ranks.append({**row,"매도경보점수":sc,"시그널":sigs,"사유":"\n".join(msgs)})
+        mins  = fetch_minute(cd, 5);      time.sleep(0.04)
+        sc, sigs, msgs = calc_sell_score(
+            cd, row["순매수량"], row["등락률"], det, daily, mins)
+        if sc < 20: continue
+        sell_ranks.append({**row, "매도경보점수": sc,
+                           "시그널": sigs, "사유": "\n".join(msgs)})
+    sell_ranks.sort(key=lambda x: x["매도경보점수"], reverse=True)
 
-    sell_ranks.sort(key=lambda x:x["매도경보점수"],reverse=True)
-
-    # 거래량 정리
-    vol_list=[{
-        "코드":r.get("mksc_shrn_iscd","").strip(),
-        "종목명":r.get("hts_kor_isnm","").strip(),
-        "시장":r.get("_mkt",""),
-        "현재가":iv(r.get("stck_prpr",0)),
-        "등락률":fv(r.get("prdy_ctrt",0)),
-        "거래량":iv(r.get("acml_vol",0)),
-        "거래량비율":fv(r.get("vol_inrt",0)),
+    vol_list = [{
+        "코드":   r.get("mksc_shrn_iscd","").strip(),
+        "종목명": r.get("hts_kor_isnm","").strip(),
+        "시장":   r.get("_mkt",""),
+        "현재가": iv(r.get("stck_prpr",0)),
+        "등락률": fv(r.get("prdy_ctrt",0)),
+        "거래량": iv(r.get("acml_vol",0)),
+        "거래량비율": fv(r.get("vol_inrt",0)),
     } for r in vol if r.get("mksc_shrn_iscd","").strip()]
-
-    # ── 장외 시간: 전일 마감 데이터 fallback ──────────────────
-    # 실시간 데이터가 없어 결과가 비었을 때 → 전일 마감 기준으로 재수집
-    if not buy_ranks and session in ("closed", "caution"):
-        log_fn("📅 장외 시간 — 전일 마감 데이터로 재조회 중...")
-        st.session_state.last_data_date = "전일 마감 기준"
-        # 전일 마감 기준: max_prdy 완화, 시간대 필터 OFF, 점수 기준 완화
-        cfg_eod = {**cfg, "max_prdy": 10.0, "time_filter": False,
-                   "threshold": 2.0, "min_vol": 1.0, "min_amt": 100}
-        buy_ranks2 = []
-        for idx, row in enumerate(buy_cands, 1):
-            cd = row["코드"]
-            log_fn(f"   전일 [{idx}/{len(buy_cands)}] {row['종목명']}")
-            det   = fetch_detail(cd); time.sleep(0.04)
-            daily = fetch_investor_daily(cd); time.sleep(0.06)
-            sc, grade, ok, sigs, msgs = calc_buy_score(
-                cd, row["순매수량"], row["거래대금(백만)"],
-                row["등락률"], det,
-                cd in org_set, cd in prg_set, cd in vol_set,
-                daily, [], cfg_eod, "normal")
-            if not ok: continue
-            tp, sl, tp_pct, sl_pct = calc_tp_sl(row["현재가"], grade, cfg_eod)
-            buy_ranks2.append({**row,
-                "기관동반": "O" if cd in org_set else "-",
-                "프로그램": "🔥" if cd in prg_set else "-",
-                "거래량급증": "💥" if cd in vol_set else "-",
-                "추천등급": grade, "매수점수": sc,
-                "목표가": tp, "목표수익률": f"+{tp_pct:.1f}%",
-                "손절가": sl, "손절률": f"-{sl_pct:.1f}%",
-                "시그널": sigs, "사유": "📅 전일 마감 기준\n" + "\n".join(msgs),
-            })
-        buy_ranks2.sort(key=lambda x: x["매수점수"], reverse=True)
-        buy_ranks = buy_ranks2
-
-        sell_ranks2 = []
-        for row in sell_cands:
-            cd = row["코드"]
-            det   = fetch_detail(cd); time.sleep(0.04)
-            daily = fetch_investor_daily(cd); time.sleep(0.06)
-            sc, sigs, msgs = calc_sell_score(cd, row["순매수량"], row["등락률"], det, daily, [])
-            if sc < 10: continue
-            sell_ranks2.append({**row, "매도경보점수": sc, "시그널": sigs,
-                                 "사유": "📅 전일 마감 기준\n" + "\n".join(msgs)})
-        sell_ranks2.sort(key=lambda x: x["매도경보점수"], reverse=True)
-        sell_ranks = sell_ranks2
-    else:
-        st.session_state.last_data_date = "실시간"
 
     log_fn(f"✅ 완료! 매수추천 {len(buy_ranks)}개 · 매도경보 {len(sell_ranks)}개")
     return buy_ranks, sell_ranks, vol_list
