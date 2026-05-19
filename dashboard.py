@@ -1473,41 +1473,59 @@ with st.sidebar:
 
     st.markdown("#### 🔑 API 키")
     with st.expander("KEY 입력 / 변경", expanded=not bool(st.session_state.app_key)):
-        ak=st.text_input("APP KEY",    value=st.session_state.app_key,    type="password",key="inp_ak")
-        sk=st.text_input("APP SECRET", value=st.session_state.app_secret, type="password",key="inp_sk")
-        rl=st.toggle("실전투자 계좌", value=st.session_state.is_real,key="inp_rl")
-        if st.button("💾 저장",key="save_key"):
-            st.session_state.app_key=ak; st.session_state.app_secret=sk
-            st.session_state.is_real=rl; st.session_state.token=None
-            st.success("✅ 저장 완료")
+        ak = st.text_input("APP KEY",    value=st.session_state.app_key,
+                           type="password", placeholder="APP KEY 입력", key="inp_ak")
+        sk = st.text_input("APP SECRET", value=st.session_state.app_secret,
+                           type="password", placeholder="APP SECRET 입력", key="inp_sk")
+        rl = st.toggle("실전투자 계좌", value=st.session_state.is_real, key="inp_rl")
+
+        if st.button("💾 저장", key="save_key"):
+            # 공백 제거 후 저장 (복붙 시 앞뒤 공백 버그 방지)
+            st.session_state.app_key    = ak.strip()
+            st.session_state.app_secret = sk.strip()
+            st.session_state.is_real    = rl
+            st.session_state.token      = None   # 기존 토큰 초기화
+            st.session_state.token_ts   = 0
+            st.success("✅ 저장 완료! 이제 조회 버튼을 눌러주세요.")
+            st.rerun()   # ← 세션 즉시 반영
+
+    # 키 입력 상태 표시
+    if st.session_state.app_key:
+        masked = st.session_state.app_key[:4] + "****" + st.session_state.app_key[-4:]
+        mode   = "실전" if st.session_state.is_real else "모의"
+        st.caption(f"✅ KEY 등록됨: `{masked}` ({mode})")
+    else:
+        st.caption("⚠️ KEY를 입력하고 저장해주세요")
+
     st.caption("🔒 키는 세션 메모리에만 보관됩니다")
     st.divider()
 
     st.markdown("#### ⚙️ 분석 설정")
     with st.expander("필터 / 목표가 조정"):
-        cfg=st.session_state.cfg
+        cfg = st.session_state.cfg
         st.markdown("**수급 필터**")
-        cfg["min_amt"]   =st.number_input("최소 거래대금 (백만원)",100,10000,int(cfg["min_amt"]),100)
-        cfg["min_vol"]   =st.slider("최소 거래량 배수",1.0,5.0,cfg["min_vol"],0.1)
-        cfg["max_prdy"]  =st.slider("등락률 상한 (%)",1.0,10.0,cfg["max_prdy"],0.5)
-        cfg["from_52w"]  =st.slider("52주저점 대비 상한 (%)",5.0,60.0,cfg["from_52w"],5.0)
-        cfg["surge"]     =st.slider("매수강도 급등 배수",1.0,5.0,cfg["surge"],0.1)
-        cfg["threshold"] =st.slider("최소 점수 기준 (×10)",1.0,8.0,cfg["threshold"],0.5)
+        cfg["min_amt"]    = st.number_input("최소 거래대금 (백만원)", 100, 10000, int(cfg["min_amt"]), 100)
+        cfg["min_vol"]    = st.slider("최소 거래량 배수",       1.0, 5.0,  cfg["min_vol"],  0.1)
+        cfg["max_prdy"]   = st.slider("등락률 상한 (%)",        1.0, 10.0, cfg["max_prdy"], 0.5)
+        cfg["from_52w"]   = st.slider("52주저점 대비 상한 (%)", 5.0, 60.0, cfg["from_52w"], 5.0)
+        cfg["surge"]      = st.slider("매수강도 급등 배수",     1.0, 5.0,  cfg["surge"],    0.1)
+        cfg["threshold"]  = st.slider("최소 점수 기준 (×10)",   1.0, 8.0,  cfg["threshold"],0.5)
         st.markdown("**매도 타이밍**")
-        cfg["tp"]        =st.slider("목표 수익률 (%)",1.0,20.0,cfg["tp"],0.5)
-        cfg["sl"]        =st.slider("손절 기준 (%)",1.0,10.0,cfg["sl"],0.5)
-        cfg["time_filter"]=st.toggle("황금시간대 가산점",value=cfg["time_filter"])
-        st.session_state.cfg=cfg
+        cfg["tp"]         = st.slider("목표 수익률 (%)",        1.0, 20.0, cfg["tp"],       0.5)
+        cfg["sl"]         = st.slider("손절 기준 (%)",          1.0, 10.0, cfg["sl"],       0.5)
+        cfg["time_filter"]= st.toggle("황금시간대 가산점", value=cfg["time_filter"])
+        st.session_state.cfg = cfg
     st.divider()
 
-    run_btn=st.button("▶  지금 조회하기",key="run_main")
+    run_btn = st.button("▶  지금 조회하기", key="run_main",
+                        disabled=not bool(st.session_state.app_key))
 
     # 장 시간대 표시
-    sess=market_session()
-    if   sess=="prime":   st.markdown('<div class="time-banner time-prime">⏰ 황금시간대 (09:00~10:30)</div>',unsafe_allow_html=True)
-    elif sess=="caution": st.markdown('<div class="time-banner time-caution">⚠️ 마감 정리 시간대 (14:30~)</div>',unsafe_allow_html=True)
-    elif sess=="normal":  st.markdown('<div class="time-banner time-prime" style="border-color:var(--bl);color:#60a5fa;">📡 장 중</div>',unsafe_allow_html=True)
-    else:                 st.markdown('<div class="time-banner time-closed">🔒 장 외 시간</div>',unsafe_allow_html=True)
+    sess = market_session()
+    if   sess == "prime":   st.markdown('<div class="time-banner time-prime">⏰ 황금시간대 (09:00~10:30)</div>',  unsafe_allow_html=True)
+    elif sess == "caution": st.markdown('<div class="time-banner time-caution">⚠️ 마감 정리 (14:30~15:30)</div>', unsafe_allow_html=True)
+    elif sess == "normal":  st.markdown('<div class="time-banner time-normal">📡 장 중 (실시간)</div>',            unsafe_allow_html=True)
+    else:                   st.markdown('<div class="time-banner time-closed">🔒 장 외 — 전일 데이터 표시</div>', unsafe_allow_html=True)
 
     if st.session_state.last_run:
         st.caption(f"마지막: **{st.session_state.last_run}**")
@@ -1555,29 +1573,46 @@ st.markdown("""
 # ════════════════════════════════════════════════════════════
 #  16. 조회 실행
 # ════════════════════════════════════════════════════════════
-log_area=st.empty()
+log_area = st.empty()
 
 if run_btn:
-    if not st.session_state.app_key or not st.session_state.app_secret:
-        st.error("⚠️ 사이드바에서 APP KEY / APP SECRET을 입력하고 저장해주세요.")
+    ak_now = st.session_state.app_key.strip()
+    sk_now = st.session_state.app_secret.strip()
+
+    if not ak_now or not sk_now:
+        st.error("⚠️ APP KEY / APP SECRET을 입력하고 **💾 저장** 버튼을 먼저 눌러주세요.")
     else:
-        prog=st.progress(0,"준비 중...")
-        step=[0]; total_steps=20
+        prog = st.progress(0, "준비 중...")
+        step = [0]
+        total_steps = 20
         def log_fn(msg):
-            step[0]+=1
-            prog.progress(min(step[0]/total_steps,1.0),text=msg)
+            step[0] += 1
+            prog.progress(min(step[0]/total_steps, 1.0), text=msg)
         try:
-            buy_r,sell_r,vol_l=run_pipeline(st.session_state.cfg,log_fn)
-            st.session_state.buy_ranks=buy_r
-            st.session_state.sell_ranks=sell_r
-            st.session_state.vol_list=vol_l
-            st.session_state.last_run=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            st.session_state.run_count+=1
-            prog.empty(); st.rerun()
+            buy_r, sell_r, vol_l = run_pipeline(st.session_state.cfg, log_fn)
+            st.session_state.buy_ranks  = buy_r
+            st.session_state.sell_ranks = sell_r
+            st.session_state.vol_list   = vol_l
+            st.session_state.last_run   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            st.session_state.run_count += 1
+            prog.empty()
+            st.rerun()
         except Exception as e:
             prog.empty()
-            st.error(f"❌ 오류: {e}")
-            st.info("• APP KEY/SECRET 확인\n• 실전/모의 계좌 구분 확인\n• 장 운영 시간(09:00~15:30) 확인")
+            err_msg = str(e)
+            st.error(f"❌ 오류: {err_msg}")
+            if "403" in err_msg:
+                st.warning("""
+**403 오류 해결 방법:**
+1. KIS Developers → 앱 관리에서 **APP KEY / SECRET 재확인**
+2. **실전투자 앱**이면 토글 ON, **모의투자 앱**이면 토글 OFF
+3. KEY를 다시 복사 붙여넣기 (앞뒤 공백 없도록)
+4. 💾 저장 버튼 클릭 후 다시 조회
+""")
+            elif "401" in err_msg:
+                st.warning("토큰 만료 — 잠시 후 다시 조회해보세요.")
+            elif "timeout" in err_msg.lower():
+                st.warning("연결 시간 초과 — 네트워크 확인 후 재시도하세요.")
 
 
 # ════════════════════════════════════════════════════════════
